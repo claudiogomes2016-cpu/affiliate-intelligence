@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireContext, roleAtLeast } from "@/server/context";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { safeErrorMessage } from "@/lib/safe-error";
 import { generateInsSecret } from "@/integrations/clickbank/ins";
 import { API_KEY_PATTERN, checkApiKey } from "@/integrations/clickbank/api";
 import type { FormState } from "./auth";
@@ -12,10 +13,17 @@ export interface SecretState extends FormState {
   secret?: string;
 }
 
+class NotAdminError extends Error {}
+
 async function requireAdmin() {
   const ctx = await requireContext();
-  if (!roleAtLeast(ctx.role, "admin")) throw new Error("Only workspace admins can manage integrations.");
+  if (!roleAtLeast(ctx.role, "admin")) throw new NotAdminError("Only workspace admins can manage integrations.");
   return ctx;
+}
+
+function failure(e: unknown, context: string): FormState {
+  if (e instanceof NotAdminError) return { error: e.message };
+  return { error: safeErrorMessage(e, context) };
 }
 
 /** Creates a new INS secret, stores it server-side and returns it ONCE for ClickBank. */
@@ -33,7 +41,7 @@ export async function createInsSecret(): Promise<SecretState> {
     revalidatePath("/settings");
     return { secret, message: "New secret key created. Paste it in ClickBank now — it will not be shown again." };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed" };
+    return failure(e, "clickbank.createInsSecret");
   }
 }
 
@@ -58,7 +66,7 @@ export async function saveClickBankApiKey(_prev: FormState, formData: FormData):
       ? { message: `API key saved and verified${check.orders !== null ? ` · ${check.orders} affiliate orders in the last 30 days` : ""}.` }
       : { message: `API key saved, but ClickBank could not be reached right now (${check.detail}). Use "Test" later.` };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed" };
+    return failure(e, "clickbank.saveApiKey");
   }
 }
 
@@ -79,7 +87,7 @@ export async function testClickBankApiKey(): Promise<FormState> {
       ? { message: `Connected${check.orders !== null ? ` · ${check.orders} affiliate orders in the last 30 days` : ""}.` }
       : { error: check.detail };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed" };
+    return failure(e, "clickbank.testApiKey");
   }
 }
 
@@ -101,6 +109,6 @@ export async function saveClickBankNickname(_prev: FormState, formData: FormData
     revalidatePath("/settings");
     return { message: "Nickname saved." };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed" };
+    return failure(e, "clickbank.saveNickname");
   }
 }
