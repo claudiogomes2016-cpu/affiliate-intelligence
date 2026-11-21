@@ -24,7 +24,9 @@ export async function checkApiKey(apiKey: string, fetchImpl: typeof fetch = fetc
       signal: AbortSignal.timeout(10_000),
     });
   } catch (e) {
-    return { ok: false, reason: "unavailable", detail: e instanceof Error ? e.message : "network error" };
+    // Never echo the exception: an invalid-header error would contain the key.
+    const timedOut = e instanceof Error && e.name === "TimeoutError";
+    return { ok: false, reason: "unavailable", detail: timedOut ? "ClickBank did not answer in time" : "network error" };
   }
   if (res.status === 401 || res.status === 403) {
     return {

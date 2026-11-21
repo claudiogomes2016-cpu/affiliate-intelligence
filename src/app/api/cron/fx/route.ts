@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { fetchUsdBrl } from "@/lib/fx";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { safeErrorMessage } from "@/lib/safe-error";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,6 @@ export async function GET(req: NextRequest) {
     if (error) throw new Error(error.message);
     return NextResponse.json({ ok: true, rate_date: row.rate_date, rate: row.rate });
   } catch (e) {
-    console.error("[cron/fx]", e);
-    return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : "unknown" }, { status: 502 });
+    return NextResponse.json({ ok: false, error: safeErrorMessage(e, "cron/fx") }, { status: 502 });
   }
 }
